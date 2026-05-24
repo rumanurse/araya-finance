@@ -1015,6 +1015,10 @@ function spending(){
   const d=document.createElement('div');
   const now=new Date();
   const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const hasApiKey=true; // Key is server-side in Netlify, always available
+  const receiptsCount=state.spending.filter(s=>s.fromReceipt).length;
+  const needsReview=state.spending.filter(s=>s.needsReview).length;
+
   d.innerHTML=`<div class="section-header"><div class="section-title">Monthly <span>Spending</span></div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">
       <select class="filter-select" id="spendMon" onchange="renderSpend()">${months.map((m,i)=>`<option ${i===now.getMonth()?'selected':''}>${m} ${now.getFullYear()}</option>`).join('')}</select>
@@ -1022,27 +1026,129 @@ function spending(){
       <button class="btn btn-gold btn-sm" onclick="exportSpendXLSX()">Export Excel</button>
     </div>
   </div>
-  <div class="receipt-drop" id="rcptDrop" onclick="document.getElementById('rcptInput').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)">
-    <input type="file" id="rcptInput" accept="image/*" style="display:none" multiple onchange="handleFiles(this.files)"/>
-    <div style="font-size:34px;margin-bottom:9px">📸</div>
-    <div style="font-weight:600;color:var(--navy);font-size:14px">Drop receipts here or tap to upload</div>
-    <div style="font-size:11px;color:var(--taupe);margin-top:3px">JPG, PNG, screenshots — AI reads amount & category automatically</div>
-    <div style="margin-top:11px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-      <button class="btn btn-navy btn-sm" onclick="event.stopPropagation();document.getElementById('rcptInput').click()">📷 Take / Upload Photo</button>
-      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openManual()">+ Manual Entry</button>
+
+  ${!hasApiKey?`<div style="background:#fff3cd;border-left:4px solid #ffc107;padding:11px 16px;margin-bottom:14px;font-size:12px;color:#856404;display:flex;align-items:center;gap:10px">
+    <span style="font-size:18px">⚠️</span>
+    <div><strong>Anthropic API key not set</strong> — receipts will be saved but not auto-read. Add <code>ANTHROPIC_KEY</code> to your config.js to enable AI reading.
+    <a href="https://console.anthropic.com" target="_blank" style="color:#856404;font-weight:600;margin-left:6px">Get key →</a></div>
+  </div>`:''}
+
+  <div class="budget-tabs" style="margin-bottom:18px">
+    <button class="btab active" id="stab-log" onclick="switchSpendTab('log',this)">📋 Spending Log</button>
+    <button class="btab" id="stab-receipts" onclick="switchSpendTab('receipts',this)">📸 Receipt History ${receiptsCount?`<span style="background:var(--navy);color:var(--gold);font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px">${receiptsCount}</span>`:''}
+    ${needsReview?`<span style="background:var(--red);color:white;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:2px">${needsReview} review</span>`:''}</button>
+  </div>
+
+  <!-- SPENDING LOG TAB -->
+  <div id="stab-panel-log">
+    <div class="receipt-drop" id="rcptDrop" onclick="document.getElementById('rcptInput').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)">
+      <input type="file" id="rcptInput" accept="image/*" style="display:none" multiple onchange="handleFiles(this.files)"/>
+      <div style="font-size:32px;margin-bottom:8px">📸</div>
+      <div style="font-weight:600;color:var(--navy);font-size:14px">${hasApiKey?'Drop receipts — AI reads automatically':'Drop receipts to save image'}</div>
+      <div style="font-size:11px;color:var(--taupe);margin-top:3px">${hasApiKey?'JPG, PNG, screenshots — amount & category auto-detected':'Images saved; add API key for auto-reading'}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-navy btn-sm" onclick="event.stopPropagation();document.getElementById('rcptInput').click()">📷 Upload / Camera</button>
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openManual()">+ Manual Entry</button>
+      </div>
+    </div>
+    <div id="aiProc" style="display:none;background:var(--champ);padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--navy);align-items:center;gap:9px">
+      <div style="width:15px;height:15px;border:2px solid var(--navy);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
+      <span id="aiProcText">Reading receipt with AI...</span>
+    </div>
+    <div id="spendSumm" style="margin-bottom:16px"></div>
+    <div style="background:white;border:1px solid var(--border);overflow-x:auto">
+      <div class="spending-head"><div>Date</div><div>Description</div><div>Category</div><div style="text-align:right">Amount</div><div></div></div>
+      <div id="spendRows"></div>
+      <div style="background:var(--navy);color:white;padding:8px 13px;display:flex;justify-content:space-between;font-weight:700;font-size:13px"><span>TOTAL SPENT</span><span id="spendTotal">$0.00</span></div>
     </div>
   </div>
-  <div id="aiProc" style="display:none;background:var(--champ);padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--navy);align-items:center;gap:9px">
-    <div style="width:15px;height:15px;border:2px solid var(--navy);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
-    <span id="aiProcText">Reading receipt...</span>
-  </div>
-  <div id="spendSumm" style="margin-bottom:16px"></div>
-  <div style="background:white;border:1px solid var(--border);overflow-x:auto">
-    <div class="spending-head"><div>Date</div><div>Description</div><div>Category</div><div style="text-align:right">Amount</div><div></div></div>
-    <div id="spendRows"></div>
-    <div style="background:var(--navy);color:white;padding:8px 13px;display:flex;justify-content:space-between;font-weight:700;font-size:13px"><span>TOTAL SPENT</span><span id="spendTotal">$0.00</span></div>
+
+  <!-- RECEIPT HISTORY TAB -->
+  <div id="stab-panel-receipts" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;color:var(--taupe)">${receiptsCount} receipt${receiptsCount!==1?'s':''} saved across all months</div>
+      <div style="display:flex;gap:7px">
+        <select class="filter-select" id="rcptMonFilter" onchange="renderReceiptHistory()">
+          <option value="">All Months</option>
+          ${months.map(m=>`<option>${m} ${now.getFullYear()}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div id="receiptGallery"></div>
   </div>`;
-  setTimeout(renderSpend,20);return d;
+
+  setTimeout(()=>{renderSpend();renderReceiptHistory();},20);return d;
+}
+
+function switchSpendTab(tab,el){
+  document.querySelectorAll('.btab').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('stab-panel-log').style.display=tab==='log'?'block':'none';
+  document.getElementById('stab-panel-receipts').style.display=tab==='receipts'?'block':'none';
+  if(tab==='receipts')renderReceiptHistory();
+}
+
+function renderReceiptHistory(){
+  const box=document.getElementById('receiptGallery');if(!box)return;
+  const monFilter=document.getElementById('rcptMonFilter')?.value||'';
+  const receipts=state.spending.filter(s=>s.fromReceipt&&(!monFilter||s.month===monFilter));
+  if(!receipts.length){
+    box.innerHTML=`<div style="padding:40px;text-align:center;background:white;border:1px solid var(--border)"><div style="font-size:40px;margin-bottom:12px">📸</div><div style="color:var(--taupe);font-size:13px">No receipts yet.<br>Upload receipts in the Spending Log tab.</div></div>`;
+    return;
+  }
+  box.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px">${receipts.map(r=>{
+    const ri=state.spending.indexOf(r);
+    return `<div style="background:white;border:1px solid ${r.needsReview?'#ffc107':'var(--border)'};overflow:hidden;transition:box-shadow 0.2s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+      <div style="height:160px;background:#f9f6f0;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;position:relative" onclick="viewReceiptFull('${r.id}')">
+        ${r.receiptUrl?`<img src="${r.receiptUrl}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='<div style=\'color:var(--taupe);font-size:11px;text-align:center;padding:10px\'>📄<br>Image unavailable</div>'"/>`:
+        '<div style="color:var(--taupe);font-size:11px;text-align:center">📄<br>No image</div>'}
+        ${r.needsReview?`<div style="position:absolute;top:6px;right:6px;background:#ffc107;color:#856404;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px">REVIEW</div>`:''}
+        <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(27,58,92,0.7);color:white;font-size:10px;padding:5px 8px;text-align:center">🔍 Click to view full</div>
+      </div>
+      <div style="padding:11px">
+        <div style="font-weight:600;color:var(--navy);font-size:13px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.desc||'Unnamed'}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--taupe)">${r.date} · ${r.month}</span>
+          <span style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:700;color:${r.amount>0?'var(--navy)':'var(--red)'}${r.amount>0?'':';font-size:12px'}">${r.amount>0?fmt(r.amount):'No amount'}</span>
+        </div>
+        <div style="display:flex;gap:5px">
+          <span class="cat-badge" style="background:${CAT_COLORS[r.category]||'#8B7355'}22;color:${CAT_COLORS[r.category]||'#8B7355'}">${r.category}</span>
+          <div style="flex:1"></div>
+          <button onclick="openManualWithReceipt(state.spending[${ri}])" style="background:transparent;border:1px solid var(--gold);color:var(--navy);font-size:10px;padding:2px 8px;cursor:pointer;font-family:'DM Sans',sans-serif">Edit</button>
+          <button onclick="deleteReceiptEntry(${ri})" style="background:transparent;border:1px solid var(--border);color:var(--red);font-size:10px;padding:2px 7px;cursor:pointer;font-family:'DM Sans',sans-serif">✕</button>
+        </div>
+      </div>
+    </div>`;}).join('')}</div>`;
+}
+
+function viewReceiptFull(id){
+  const r=state.spending.find(s=>s.id===id);if(!r)return;
+  const ri=state.spending.indexOf(r);
+  openModal(`Receipt — ${r.desc||'View'}`,`
+    <div style="text-align:center;margin-bottom:16px">
+      ${r.receiptUrl?`<img src="${r.receiptUrl}" style="max-width:100%;max-height:400px;object-fit:contain;border:1px solid var(--border)" onerror="this.style.display='none'"/>`:
+      '<div style="padding:40px;background:#f9f6f0;color:var(--taupe)">No image available</div>'}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;font-size:13px">
+      <div><span style="color:var(--taupe)">Description</span><div style="font-weight:600;color:var(--navy)">${r.desc||'—'}</div></div>
+      <div><span style="color:var(--taupe)">Amount</span><div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:700;color:var(--navy)">${r.amount>0?fmt(r.amount):'Not entered'}</div></div>
+      <div><span style="color:var(--taupe)">Date</span><div style="font-weight:600">${r.date}</div></div>
+      <div><span style="color:var(--taupe)">Month</span><div style="font-weight:600">${r.month}</div></div>
+      <div><span style="color:var(--taupe)">Category</span><div><span class="cat-badge" style="background:${CAT_COLORS[r.category]||'#8B7355'}22;color:${CAT_COLORS[r.category]||'#8B7355'}">${r.category}</span></div></div>
+      ${r.store?`<div><span style="color:var(--taupe)">Store</span><div style="font-weight:600">${r.store}</div></div>`:''}
+      ${r.items?`<div style="grid-column:1/-1"><span style="color:var(--taupe)">Items</span><div style="font-size:12px;color:var(--mid)">${r.items}</div></div>`:''}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="closeModal()">Close</button>
+      <button class="btn btn-gold btn-sm" onclick="closeModal();openManualWithReceipt(state.spending[${ri}])">✏ Edit Details</button>
+    </div>`);
+}
+
+function deleteReceiptEntry(ri){
+  const id=state.spending[ri]?.id;
+  state.spending.splice(ri,1);
+  if(id&&sb)dbDeleteSpending(id);
+  renderSpend();renderReceiptHistory();showToast('Receipt deleted.');
 }
 function getSpendMon(){return document.getElementById('spendMon')?.value||'';}
 function renderSpend(){
@@ -1105,24 +1211,86 @@ async function readReceipt(file){
   const proc=document.getElementById('aiProc');
   const pt=document.getElementById('aiProcText');
   if(proc){proc.style.display='flex';pt.textContent=`Reading "${file.name}"...`;}
+
+  // No API key needed here — handled securely by Netlify function
+
   const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+  const b64full=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});
+  // No API key check needed — key lives securely in Netlify environment
   const mon=getSpendMon();
   const today=new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'});
   try{
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:300,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:file.type||'image/jpeg',data:b64}},{type:'text',text:`Read this receipt/screenshot. Return ONLY a JSON object (no markdown, no extra text):
-{"amount":0.00,"description":"merchant or what purchased","category":"one of: housing,transport,food,utilities,business,health,personal,entertainment,other","date":"MM/DD/YY or leave blank"}`}]}]})});
-    const data=await resp.json();
-    const txt=data.content?.[0]?.text||'{}';
-    let parsed;try{parsed=JSON.parse(txt.replace(/```json|```/g,'').trim());}catch{parsed={};}
-    const receiptUrl = await uploadReceiptToStorage(file);
-    const rcptEntry={id:uid(),month:mon,date:parsed.date||today,desc:parsed.description||file.name,category:parsed.category||'other',amount:parseFloat(parsed.amount)||0,fromReceipt:true,receiptUrl};
+    // Call secure Netlify proxy — API key never in browser
+    const proxyUrl = (typeof ARAYA_CONFIG!=='undefined'&&ARAYA_CONFIG.RECEIPT_PROXY_URL) || '/.netlify/functions/read-receipt';
+    const resp=await fetch(proxyUrl,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({imageBase64:b64, mediaType:file.type||'image/jpeg'})
+    });
+    if(!resp.ok){throw new Error('Proxy error: '+resp.status);}
+    const parsed=await resp.json();
+    if(parsed.error){throw new Error(parsed.error);}
+    const receiptUrl = await uploadReceiptToStorage(file) || b64full;
+    const rcptEntry={
+      id:uid(),month:mon,
+      date:parsed.date||today,
+      desc:parsed.description||parsed.store||file.name,
+      store:parsed.store||'',
+      items:parsed.items||'',
+      category:parsed.category||'other',
+      amount:parseFloat(parsed.amount)||0,
+      fromReceipt:true,receiptUrl,
+      needsReview:false
+    };
     state.spending.push(rcptEntry);
-    dbSaveSpending(rcptEntry);
-    renderSpend();showToast(`✓ ${parsed.description||file.name} — ${fmt(parsed.amount||0)}`);
+    if(sb)dbSaveSpending(rcptEntry);
+    renderSpend();renderReceiptHistory();
+    showToast(`✓ ${rcptEntry.desc} — ${fmt(rcptEntry.amount)}`);
   }catch(err){
-    showToast('Could not auto-read — use Manual Entry!');
-    openManual();
+    console.error('Receipt read error:',err);
+    // Save image anyway with manual entry
+    const receiptUrl2 = await uploadReceiptToStorage(file) || b64full;
+    const fallback={id:uid(),month:mon,date:today,desc:file.name.replace(/\.[^.]+$/,''),category:'other',amount:0,fromReceipt:true,receiptUrl:receiptUrl2,needsReview:true};
+    state.spending.push(fallback);
+    if(sb)dbSaveSpending(fallback);
+    renderSpend();renderReceiptHistory();
+    showToast('Image saved — could not auto-read. Fill in details!');
+    openManualWithReceipt(fallback);
   }finally{if(proc)proc.style.display='none';}
+}
+
+function openManualWithReceipt(entry){
+  const ri=state.spending.indexOf(entry);
+  openModal('Review Receipt Entry',`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div style="border:1px solid var(--border);display:flex;align-items:center;justify-content:center;min-height:180px;background:#f9f6f0;overflow:hidden;">
+        ${entry.receiptUrl?`<img src="${entry.receiptUrl}" style="max-width:100%;max-height:220px;object-fit:contain" onerror="this.style.display='none'"/>`:
+        '<div style="color:var(--taupe);font-size:12px;text-align:center">Image preview</div>'}
+      </div>
+      <div class="form-grid" style="grid-template-columns:1fr;gap:12px;align-content:start">
+        <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="mr-desc" value="${entry.desc}" placeholder="What was this?"/></div>
+        <div class="form-group"><label class="form-label">Amount ($)</label><input class="form-input" type="number" id="mr-amt" value="${entry.amount||''}" placeholder="0.00"/></div>
+        <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="mr-date" value="${entry.date}"/></div>
+        <div class="form-group"><label class="form-label">Category</label>
+          <select class="form-select" id="mr-cat">${Object.keys(CAT_COLORS).map(c=>`<option value="${c}" ${c===entry.category?'selected':''}>${c}</option>`).join('')}</select>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-gold btn-sm" onclick="saveReceiptReview(${ri})">✓ Save Entry</button>
+    </div>`);
+}
+
+function saveReceiptReview(ri){
+  const entry=state.spending[ri];if(!entry)return;
+  entry.desc=document.getElementById('mr-desc')?.value||entry.desc;
+  entry.amount=parseFloat(document.getElementById('mr-amt')?.value)||0;
+  entry.date=document.getElementById('mr-date')?.value||entry.date;
+  entry.category=document.getElementById('mr-cat')?.value||entry.category;
+  entry.needsReview=false;
+  if(sb)dbSaveSpending(entry);
+  closeModal();renderSpend();renderReceiptHistory();showToast('Receipt entry saved! ✓');
 }
 function exportSpendXLSX(){
   const mon=getSpendMon();
