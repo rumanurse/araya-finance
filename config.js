@@ -1,19 +1,22 @@
 // ============================================================
 // ARAYA FINANCE — Config
-// Replace the values below with YOUR Supabase project details
-// Find them at: supabase.com > Your Project > Settings > API
 // ============================================================
 
 const ARAYA_CONFIG = {
   // ── SUPABASE ──────────────────────────────────────────────
-  // Go to: supabase.com > Project Settings > API
-  SUPABASE_URL:  'https://YOUR_PROJECT_ID.supabase.co',   // ← paste here
-  SUPABASE_ANON: 'YOUR_ANON_PUBLIC_KEY',                  // ← paste here
+  // supabase.com > Your Project > Settings > API Keys
+  SUPABASE_URL:  'https://cykgxdvsrhxplapuawbr.supabase.co',   // ← already filled in
+  SUPABASE_ANON: 'sb_publishable_YVDuLoOtkANCIcVCqbokRA_-JY1ytWg', // ← paste yours here
 
   // ── RECEIPT STORAGE ───────────────────────────────────────
-  STORAGE_BUCKET: 'receipts',   // bucket name you created
+  STORAGE_BUCKET: 'receipts',
+
+  // ── RECEIPT AI PROXY ──────────────────────────────────────
+  // This points to your Netlify function — Anthropic key lives there safely
+  // After deploying to Netlify this will be auto-set, leave as-is
+  RECEIPT_PROXY_URL: '/.netlify/functions/read-receipt',
 
   // ── APP ───────────────────────────────────────────────────
-  PASSWORD: 'Araya2026!',       // change this to whatever you want
-  SESSION_HOURS: 1,             // auto-logout after X hours of inactivity
+  PASSWORD: 'Araya2026!',       // ← change to whatever you want
+  SESSION_HOURS: 1,
 };
